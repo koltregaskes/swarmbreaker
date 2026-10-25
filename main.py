@@ -2241,19 +2241,29 @@ class Game:
                 self.spawn_floating_text(f"Surge bonus +{surge_bonus}", (SCREEN_WIDTH // 2, PLAYER_ZONE_TOP - 8), TITLE_COLOR, 22)
                 self.play_sound(self.sounds["surge"])
         bonus_seconds = 0
+        granted_seconds = 0
         if self.mode_timer_frames is not None:
             bonus_seconds = self.current_mode()["time_bonus_boss"] if self.wave_profile["kind"] == "boss" else self.current_mode()["time_bonus_wave"]
         if bonus_seconds:
-            self.award_time_bonus(bonus_seconds)
+            granted_seconds = self.award_time_bonus(bonus_seconds)
         if self.wave_profile["kind"] == "boss" and not self.demo_arc_complete:
             self.demo_arc_complete = True
-            self.set_status_message("Demo arc clear. Endless escalation unlocked.", 180)
+            message = "Demo arc clear. Endless escalation unlocked."
+            duration = 180
         elif self.wave_profile["kind"] == "boss" and self.wave_profile.get("boss_prime_bonus", 0):
-            self.set_status_message(f"Matriarch Prime broken. Banked +{self.wave_profile['boss_prime_bonus']}.", 170)
+            message = f"Matriarch Prime broken. Banked +{self.wave_profile['boss_prime_bonus']}."
+            duration = 170
         elif self.wave_profile["kind"] == "surge":
-            self.set_status_message(f"Overrun surge broken. Banked +{self.wave_profile['surge_bonus']}.", 160)
+            message = f"Overrun surge broken. Banked +{self.wave_profile['surge_bonus']}."
+            duration = 160
         else:
-            self.set_status_message(f"Wave {self.level} neutralised.", 120)
+            message = f"Wave {self.level} neutralised."
+            duration = 120
+        if granted_seconds:
+            message = f"{message} Clock +{granted_seconds}s."
+        elif bonus_seconds:
+            message = f"{message} Strike clock capped."
+        self.set_status_message(message, duration)
         self.stabilize_mushroom_field()
         self.apply_mode_field_state()
         self.begin_wave(self.level + 1)
@@ -2273,14 +2283,21 @@ class Game:
         ]
 
     def award_time_bonus(self, seconds):
-        if self.mode_timer_frames is None:
-            return
+        if self.mode_timer_frames is None or seconds <= 0:
+            return 0
+        before = self.mode_timer_frames
         cap_seconds = self.current_mode()["time_cap_seconds"] or seconds
-        new_total = self.mode_timer_frames + seconds * 60
+        new_total = before + seconds * 60
         self.mode_timer_frames = min(new_total, cap_seconds * 60)
-        self.spawn_floating_text(f"+{seconds}s", (SCREEN_WIDTH // 2, 84), SUCCESS_COLOR, 24)
-        self.set_status_message(f"Clock extended by {seconds} seconds.", 120)
+        granted_frames = self.mode_timer_frames - before
+        if granted_frames <= 0:
+            self.spawn_floating_text("Clock capped", (SCREEN_WIDTH // 2, 84), WARNING_COLOR, 22)
+            return 0
+        granted_seconds = granted_frames // 60
+        label = f"+{granted_seconds}s" if granted_seconds == seconds else f"+{granted_seconds}s cap"
+        self.spawn_floating_text(label, (SCREEN_WIDTH // 2, 84), SUCCESS_COLOR, 24)
         self.play_sound(self.sounds["bonus"])
+        return granted_seconds
 
     def update_mode_clock(self):
         if self.mode_timer_frames is None:
