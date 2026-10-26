@@ -2,7 +2,14 @@
 
 Retro arcade trench defence inspired by the segmented-enemy chaos of `Centipede`.
 
-The current demo slice now includes:
+The whole game is one trench run. Launch it with `python main.py`. Quick Start deploys Classic Defence. Select Mode opens the other rulesets.
+
+- **Win:** destroy Matriarch Prime, the third hive queen. Classic Defence and Toxic Gauntlet meet her on wave 12, Time Attack on wave 9, and Boss Rush on wave 3.
+- **Loss:** every defence ship is destroyed, a strike clock reaches zero, or you abandon the run.
+
+The victory screen or the loss screen ends the session. Breaking an earlier queen does not open an endless demo.
+
+A run includes:
 
 - title, mode select, records, help, options, pause, and game-over screens
 - persistent presentation settings plus a local profile for unlocks and run history
@@ -43,6 +50,16 @@ python main.py
 - `M`: mute or restore audio
 - `R`: open records from the mode select screen
 - `Esc`: back out of menus or end the current run
+
+## Campaign endings
+
+A fresh profile can be played from the title screen through a Classic Defence loss and a Classic Defence win:
+
+```bash
+python tools/play_campaign_endings.py
+```
+
+The win is Matriarch Prime on wave 12. The loss is every defence ship destroyed. The script drives the same key and fire inputs a player uses. It does not skip to an ending.
 
 ## Smoke test
 

@@ -324,17 +324,19 @@ SETTINGS_PATH = os.path.join(DATA_DIR, LEGACY_SETTINGS_PATH)
 PROFILE_PATH = os.path.join(DATA_DIR, LEGACY_PROFILE_PATH)
 
 RANK_VALUES = {"D": 0, "C": 1, "B": 2, "A": 3, "S": 4}
+WIN_LINE = "Win: destroy Matriarch Prime."
+LOSS_LINE = "Loss: no ships left, clock hits zero, or you abandon."
 
 GAME_MODES = {
     "classic": {
         "label": "Classic Defence",
         "short_label": "Classic",
-        "tagline": "Balanced orchard trench doctrine for pure score chasing.",
-        "description": "The base arcade rule set. Boss every fourth push, standard resources, endless escalation.",
+        "tagline": "Break Matriarch Prime to hold Sector Seven.",
+        "description": "The campaign. A boss every fourth wave. Destroy Matriarch Prime on wave 12 to win.",
         "rules": [
-            "Balanced enemy pressure and standard boss cadence.",
-            "Tutorial card and first-run onboarding stay active here.",
-            "Best lane to learn patterns and post a foundation score.",
+            "Destroy Matriarch Prime on wave 12.",
+            "A boss arrives every fourth wave.",
+            "Loss: no ships left, or you abandon.",
         ],
         "briefing_lines": [
             "Standard trench doctrine is still holding around Sector Seven.",
@@ -363,12 +365,12 @@ GAME_MODES = {
     "time_attack": {
         "label": "Time Attack",
         "short_label": "Time Attack",
-        "tagline": "Three-minute score sprint with clock extensions for clean clears.",
-        "description": "Pressure rises faster, bosses arrive sooner, and the clock is the true enemy.",
+        "tagline": "Break Matriarch Prime before the strike clock dies.",
+        "description": "A three-minute sprint. Destroy Matriarch Prime on wave 9, or the clock ends the run.",
         "rules": [
-            "Start with 3:00 on the clock.",
-            "Wave clears add 12 seconds. Boss clears add 18 seconds.",
-            "Bosses arrive every third wave and pressure ramps early.",
+            "Destroy Matriarch Prime on wave 9.",
+            "Clock starts at 3:00. Clears add time.",
+            "Loss: clock zero, no ships, or abandon.",
         ],
         "briefing_lines": [
             "Command wants a hot extraction score before the lane collapses.",
@@ -397,12 +399,12 @@ GAME_MODES = {
     "toxic_gauntlet": {
         "label": "Toxic Gauntlet",
         "short_label": "Toxic",
-        "tagline": "Poison-heavy survival lane with brutal dive pressure.",
-        "description": "The orchard floor is already contaminated. Scorpions and poisoned caps own the route.",
+        "tagline": "Break Matriarch Prime through the venom lane.",
+        "description": "The campaign on a poisoned field. Destroy Matriarch Prime on wave 12.",
         "rules": [
-            "Start with fewer lives and more poisoned mushrooms in circulation.",
-            "Scorpions and fleas pressure the field more aggressively.",
-            "Best for survival specialists who can read dive lanes fast.",
+            "Destroy Matriarch Prime on wave 12.",
+            "Fewer ships, and more venom caps.",
+            "Loss: no ships left, or you abandon.",
         ],
         "briefing_lines": [
             "The lower orchard is saturated with venom caps and collapsing cover.",
@@ -435,12 +437,12 @@ GAME_MODES = {
     "boss_rush": {
         "label": "Boss Rush",
         "short_label": "Boss Rush",
-        "tagline": "Every wave is an elite break point backed by reinforcements.",
-        "description": "No warm-up. Every deployment is a matriarch encounter with lane support units.",
+        "tagline": "Break Matriarch Prime. Every wave is a queen.",
+        "description": "No warm-up. Destroy Matriarch Prime on wave 3.",
         "rules": [
-            "Every wave is a boss wave.",
-            "Bosses are lighter, but every arena opens with support centipedes.",
-            "Built for short, high-drama runs and strong leaderboard entries.",
+            "Destroy Matriarch Prime on wave 3.",
+            "Every wave is a hive queen.",
+            "Loss: no ships left, or you abandon.",
         ],
         "briefing_lines": [
             "Command cut the scouting phase. The brood queens are hitting in sequence.",
@@ -471,6 +473,11 @@ GAME_MODES = {
         },
     },
 }
+
+
+def campaign_finale_wave(mode):
+    interval = mode["boss_interval"] or BOSS_WAVE_INTERVAL
+    return 3 * interval
 
 
 def ensure_data_dir():
@@ -1473,7 +1480,6 @@ class Game:
         self.flash_decay = 0
         self.shake_frames = 0
         self.shake_strength = 0
-        self.demo_arc_complete = False
         self.play_frames = 0
         self.mode_timer_frames = int(mode["time_limit_seconds"] * 60) if mode["time_limit_seconds"] else None
         self.timer_warning_stage = 0
@@ -1690,7 +1696,7 @@ class Game:
         return new_unlocks
 
     def record_sort_key(self, entry):
-        result_penalty = {"cleared": 0, "timeout": 1, "destroyed": 1, "abandoned": 2}.get(entry["result"], 2)
+        result_penalty = {"victory": 0, "cleared": 0, "timeout": 1, "destroyed": 1, "abandoned": 2}.get(entry["result"], 2)
         return (
             -int(entry["score"]),
             -int(entry["waves_cleared"]),
@@ -1795,13 +1801,21 @@ class Game:
         surface.blit(text_surface, rect)
         return rect
 
-    def draw_wrapped_text(self, surface, text, size, rect, color=WHITE, bold=False, line_gap=4):
+    def draw_wrapped_text(self, surface, text, size, rect, color=WHITE, bold=False, line_gap=4, max_bottom=None):
         font = self.get_font(size, bold=bold)
         y = rect.y
+        line_height = font.get_linesize() + line_gap
+
+        def room_for_line():
+            if max_bottom is None:
+                return True
+            return y + font.get_linesize() <= max_bottom
+
         for paragraph in text.splitlines():
             words = paragraph.split()
             if not words:
-                y += font.get_linesize() + line_gap
+                if room_for_line():
+                    y += line_height
                 continue
             current_line = words[0]
             for word in words[1:]:
@@ -1809,11 +1823,15 @@ class Game:
                 if font.size(test_line)[0] <= rect.width:
                     current_line = test_line
                 else:
+                    if not room_for_line():
+                        return y
                     self.draw_text(surface, current_line, size, rect.x, y, color, align="topleft", bold=bold)
-                    y += font.get_linesize() + line_gap
+                    y += line_height
                     current_line = word
+            if not room_for_line():
+                return y
             self.draw_text(surface, current_line, size, rect.x, y, color, align="topleft", bold=bold)
-            y += font.get_linesize() + line_gap
+            y += line_height
         return y
 
     def draw_panel(self, surface, rect):
@@ -2138,11 +2156,11 @@ class Game:
         ]
         if self.wave_profile["kind"] == "boss":
             if self.wave_profile.get("prime"):
-                self.wave_intro_lines[1] = "Warning: Matriarch Prime inbound."
-                self.wave_intro_lines[2] = f"Break the queen fast. Prime collapse pays {self.wave_profile['boss_prime_bonus']}."
+                self.wave_intro_lines[1] = "Matriarch Prime is inbound."
+                self.wave_intro_lines[2] = "Destroy her to win the run."
             else:
-                self.wave_intro_lines[1] = "Warning: the Hive Matriarch is inbound."
-                self.wave_intro_lines[2] = "Break the queen fast before the reinforcements stack."
+                self.wave_intro_lines[1] = "The Hive Matriarch is inbound."
+                self.wave_intro_lines[2] = "Break this queen. The run ends at Matriarch Prime."
         elif self.wave_profile["kind"] == "surge":
             self.wave_intro_lines[1] = "Warning: overrun surge inbound."
             self.wave_intro_lines[2] = f"Hold for a surge payout worth {self.wave_profile['surge_bonus']} points."
@@ -2246,13 +2264,13 @@ class Game:
             bonus_seconds = self.current_mode()["time_bonus_boss"] if self.wave_profile["kind"] == "boss" else self.current_mode()["time_bonus_wave"]
         if bonus_seconds:
             granted_seconds = self.award_time_bonus(bonus_seconds)
-        if self.wave_profile["kind"] == "boss" and not self.demo_arc_complete:
-            self.demo_arc_complete = True
-            message = "Demo arc clear. Endless escalation unlocked."
+        finale = self.wave_profile["kind"] == "boss" and self.wave_profile.get("prime")
+        if finale:
+            message = "Matriarch Prime broken. Sector Seven holds."
             duration = 180
-        elif self.wave_profile["kind"] == "boss" and self.wave_profile.get("boss_prime_bonus", 0):
-            message = f"Matriarch Prime broken. Banked +{self.wave_profile['boss_prime_bonus']}."
-            duration = 170
+        elif self.wave_profile["kind"] == "boss":
+            message = "Hive Matriarch broken."
+            duration = 150
         elif self.wave_profile["kind"] == "surge":
             message = f"Overrun surge broken. Banked +{self.wave_profile['surge_bonus']}."
             duration = 160
@@ -2264,6 +2282,9 @@ class Game:
         elif bonus_seconds:
             message = f"{message} Strike clock capped."
         self.set_status_message(message, duration)
+        if finale:
+            self.enter_victory()
+            return
         self.stabilize_mushroom_field()
         self.apply_mode_field_state()
         self.begin_wave(self.level + 1)
@@ -2380,10 +2401,22 @@ class Game:
         self.save_profile()
 
     def enter_game_over(self, reason="destroyed"):
-        if self.game_phase == "game_over":
+        if self.game_phase in ("game_over", "victory"):
             return
         self.run_end_reason = reason
         self.game_phase = "game_over"
+        self.game_over_menu_index = 0
+        self.high_score = max(self.high_score, self.score)
+        self.rank_label = self.run_rank()
+        self.finalize_run_record()
+        self.save_high_score()
+
+    def enter_victory(self):
+        if self.game_phase in ("game_over", "victory"):
+            return
+        self.run_end_reason = "victory"
+        self.game_phase = "victory"
+        self.game_over_menu_index = 0
         self.high_score = max(self.high_score, self.score)
         self.rank_label = self.run_rank()
         self.finalize_run_record()
@@ -2428,7 +2461,7 @@ class Game:
     def desired_music_key(self):
         if self.game_phase in ("mode_select", "records"):
             return "mode_select_theme"
-        if self.game_phase in ("title", "help", "options", "game_over"):
+        if self.game_phase in ("title", "help", "options", "game_over", "victory"):
             return "title_theme"
         if self.game_phase in ("briefing", "paused"):
             return "briefing_theme"
@@ -2486,7 +2519,7 @@ class Game:
         all_complete = all(done for _, done in tasks)
         if all_complete and not self.tutorial_notice_seen:
             self.tutorial_notice_seen = True
-            self.set_status_message("Tutorial complete. Chase the high score.", 150)
+            self.set_status_message("Tutorial complete. Matriarch Prime ends the run.", 150)
             self.play_sound(self.sounds["bonus"])
 
     def rating_score(self):
@@ -2544,7 +2577,7 @@ class Game:
             self.handle_playing_input(key)
         elif self.game_phase == "paused":
             self.handle_pause_input(key)
-        elif self.game_phase == "game_over":
+        elif self.game_phase in ("game_over", "victory"):
             self.handle_game_over_input(key)
 
     def handle_keyup(self, key):
@@ -2783,7 +2816,6 @@ class Game:
         self.update_enemy_spawns()
         self.all_sprites.update()
         self.handle_collisions()
-        self.resolve_wave_completion()
 
     def update_starfield(self):
         for star in self.starfield:
@@ -2848,6 +2880,17 @@ class Game:
             scorpion = Scorpion(self)
             self.add_sprite(scorpion, 4, self.all_sprites, self.scorpions)
 
+    def centipede_patrol_top(self, head):
+        resting_top = PLAYER_START_BOTTOM - self.player.rect.height
+        return resting_top - head.rect.height - 6
+
+    def drop_centipede_head(self, head, floor):
+        if head.rect.top + GRID_STEP >= floor:
+            head.rect.top = floor
+            head.direction *= -1
+            return
+        head.move_down()
+
     def update_centipedes(self):
         if not self.centipedes:
             return
@@ -2870,11 +2913,28 @@ class Game:
                 head.move_dive()
                 continue
 
+            floor = self.centipede_patrol_top(head)
+            if head.rect.top >= floor:
+                head.rect.top = floor
+                head.rect.x += head.speed * head.direction
+                if head.rect.left < 0:
+                    head.rect.left = 0
+                    head.direction = 1
+                elif head.rect.right > SCREEN_WIDTH:
+                    head.rect.right = SCREEN_WIDTH
+                    head.direction = -1
+                continue
+
             head.rect.x += head.speed * head.direction
-            if head.rect.right > SCREEN_WIDTH or head.rect.left < 0:
-                head.move_down()
-            if pygame.sprite.spritecollide(head, self.mushrooms, False):
-                head.move_down()
+            hit_edge = head.rect.right > SCREEN_WIDTH or head.rect.left < 0
+            if head.rect.left < 0:
+                head.rect.left = 0
+            elif head.rect.right > SCREEN_WIDTH:
+                head.rect.right = SCREEN_WIDTH
+            if hit_edge:
+                self.drop_centipede_head(head, floor)
+            if head.rect.top < floor and pygame.sprite.spritecollide(head, self.mushrooms, False):
+                self.drop_centipede_head(head, floor)
 
     def handle_collisions(self):
         mushroom_hits = pygame.sprite.groupcollide(self.player_bullets, self.mushrooms, True, False)
@@ -2972,6 +3032,10 @@ class Game:
                 mushroom.poison()
                 self.spawn_effect("hit", mushroom.rect.center)
 
+        self.resolve_wave_completion()
+        if self.game_phase != "playing":
+            return
+
         if self.player.invulnerable_timer <= 0:
             player_collided = any(
                 pygame.sprite.spritecollide(self.player, group, False)
@@ -3005,6 +3069,8 @@ class Game:
             self.reset_after_life()
 
     def resolve_wave_completion(self):
+        if self.game_phase != "playing" or not self.wave_profile:
+            return
         if self.wave_profile["kind"] == "boss":
             if not self.bosses and not self.centipedes and not self.enemy_projectiles:
                 self.complete_wave()
@@ -3052,6 +3118,7 @@ class Game:
             self.draw_text(surface, f"Record pace +{self.score - self.mode_best_score_start}", 14, 22, 104, SUCCESS_COLOR, align="topleft")
         else:
             self.draw_text(surface, "Set the opening benchmark", 14, 22, 104, (176, 188, 206), align="topleft")
+        self.draw_text(surface, WIN_LINE, 14, 22, 122, SUCCESS_COLOR, align="topleft")
         self.draw_text(surface, f"Wave {self.level}", 18, SCREEN_WIDTH - 22, 14, theme["title"], align="topright", bold=True)
         self.draw_text(surface, f"Best {self.mode_best_score}", 16, SCREEN_WIDTH - 22, 40, theme["warning"], align="topright")
         self.draw_text(surface, f"{self.current_mode()['short_label']}  |  {self.wave_profile['title']}", 16, SCREEN_WIDTH / 2, 12, (212, 224, 240), bold=True)
@@ -3146,48 +3213,48 @@ class Game:
         self.draw_background(self.screen)
         panel = pygame.Rect(88, 44, SCREEN_WIDTH - 176, SCREEN_HEIGHT - 88)
         self.draw_panel(self.screen, panel)
-        self.draw_text(self.screen, "SWARMBREAKER", 52, SCREEN_WIDTH / 2, 104, TITLE_COLOR, bold=True)
-        self.draw_text(self.screen, "Arcade trench defence against a venom-guided segmented swarm.", 20, SCREEN_WIDTH / 2, 164, WHITE)
+        self.draw_text(self.screen, "SWARMBREAKER", 46, SCREEN_WIDTH / 2, 78, TITLE_COLOR, bold=True)
+        self.draw_text(self.screen, "Arcade trench defence against a venom-guided segmented swarm.", 18, SCREEN_WIDTH / 2, 126, WHITE)
         story_lines = [
-            "Sector Seven is the last live orchard lane.",
-            "Centipedes punch through the grid, scorpions poison the route,",
-            "and the hive matriarch follows any weakness in the field.",
+            "Hold Sector Seven against the hive.",
+            WIN_LINE,
+            LOSS_LINE,
         ]
         for index, line in enumerate(story_lines):
-            self.draw_text(self.screen, line, 18, SCREEN_WIDTH / 2, 204 + index * 24, (210, 221, 236))
+            self.draw_text(self.screen, line, 16, SCREEN_WIDTH / 2, 154 + index * 20, (210, 221, 236))
 
         current_record = self.mode_record(self.current_mode_id)
         lifetime = self.profile["lifetime"]
-        intel_strip = pygame.Rect(120, 274, SCREEN_WIDTH - 240, 48)
+        intel_strip = pygame.Rect(120, 216, SCREEN_WIDTH - 240, 42)
         self.draw_panel(self.screen, intel_strip)
-        self.draw_text(self.screen, f"Current Deployment  |  {self.current_mode()['label']}", 18, intel_strip.centerx, intel_strip.y + 8, TITLE_COLOR, bold=True)
+        self.draw_text(self.screen, f"Current Deployment  |  {self.current_mode()['label']}", 16, intel_strip.centerx, intel_strip.y + 4, TITLE_COLOR, bold=True)
         self.draw_text(
             self.screen,
             f"Best {current_record['best_score']}   Wave {current_record['best_wave']}   x{current_record['best_multiplier']}   Runs {lifetime['runs']}   Bosses {lifetime['bosses_destroyed']}   Clears {lifetime['waves_cleared']}",
-            14,
+            13,
             intel_strip.centerx,
-            intel_strip.y + 28,
+            intel_strip.y + 24,
             WARNING_COLOR,
         )
-        self.draw_menu(self.screen, self.title_menu_items(), self.title_menu_index, 320)
+        self.draw_menu(self.screen, self.title_menu_items(), self.title_menu_index, 272)
         self.draw_text(
             self.screen,
             f"Career High  {self.high_score}   |   Unlocked Modes  {sum(1 for mode_id in self.mode_ids if self.mode_is_unlocked(mode_id))}/{len(self.mode_ids)}",
-            20,
+            18,
             SCREEN_WIDTH / 2,
-            500,
+            468,
             WARNING_COLOR,
             bold=True,
         )
         self.draw_text(
             self.screen,
-            "Quick Start jumps into the current mode instantly. Select Mode opens the full ruleset list.",
-            16,
+            "Quick Start deploys Classic Defence. Select Mode opens the other rulesets.",
+            15,
             SCREEN_WIDTH / 2,
-            530,
+            498,
             (176, 188, 206),
         )
-        self.draw_text(self.screen, "Arrow keys move. Push up the trench for extra dodge space. P pauses. M toggles audio.", 16, SCREEN_WIDTH / 2, 556, (172, 186, 205))
+        self.draw_text(self.screen, "Arrow keys move. Push up the trench for extra dodge space. P pauses. M toggles audio.", 15, SCREEN_WIDTH / 2, 524, (172, 186, 205))
 
     def draw_mode_select_screen(self):
         self.draw_background(self.screen)
@@ -3203,40 +3270,41 @@ class Game:
 
         for index, mode_id in enumerate(self.mode_ids):
             mode = GAME_MODES[mode_id]
-            y = list_rect.y + 28 + index * 62
+            y = list_rect.y + 18 + index * 76
             active = index == self.mode_select_index
             unlocked = self.mode_is_unlocked(mode_id)
             if active:
-                highlight = pygame.Rect(list_rect.x + 10, y - 10, list_rect.width - 20, 48)
+                highlight = pygame.Rect(list_rect.x + 10, y - 8, list_rect.width - 20, 54)
                 pygame.draw.rect(self.screen, (24, 39, 61), highlight, border_radius=12)
                 pygame.draw.rect(self.screen, (67, 115, 160), highlight, width=1, border_radius=12)
             title_color = TITLE_COLOR if active else (220, 226, 238)
             if not unlocked:
                 title_color = (144, 156, 178)
-            self.draw_text(self.screen, mode["label"], 22, list_rect.x + 18, y, title_color, align="topleft", bold=active)
+            self.draw_text(self.screen, mode["label"], 20, list_rect.x + 18, y, title_color, align="topleft", bold=active)
             status_text = "Unlocked" if unlocked else "Locked"
             status_color = SUCCESS_COLOR if unlocked else WARNING_COLOR
-            self.draw_text(self.screen, status_text, 16, list_rect.right - 18, y + 2, status_color, align="topright")
-            self.draw_text(self.screen, mode["short_label"], 15, list_rect.x + 18, y + 30, (176, 188, 206), align="topleft")
+            self.draw_text(self.screen, status_text, 14, list_rect.right - 16, y + 28, status_color, align="topright")
 
         mode_id = self.mode_ids[self.mode_select_index]
         mode = GAME_MODES[mode_id]
         record = self.mode_record(mode_id)
         unlocked = self.mode_is_unlocked(mode_id)
-        self.draw_text(self.screen, mode["label"], 28, detail_rect.centerx, detail_rect.y + 18, TITLE_COLOR, bold=True)
-        self.draw_wrapped_text(
+        self.draw_text(self.screen, mode["label"], 26, detail_rect.centerx, detail_rect.y + 14, TITLE_COLOR, bold=True)
+        tagline_bottom = self.draw_wrapped_text(
             self.screen,
             mode["tagline"],
-            16,
-            pygame.Rect(detail_rect.x + 18, detail_rect.y + 48, detail_rect.width - 36, 32),
+            15,
+            pygame.Rect(detail_rect.x + 18, detail_rect.y + 48, detail_rect.width - 36, 44),
             WHITE,
+            max_bottom=detail_rect.y + 96,
         )
+        info_y = max(tagline_bottom + 4, detail_rect.y + 96)
         self.draw_text(
             self.screen,
             f"Local best {record['best_score']}   Rank {record['best_rank']}   Wave {record['best_wave']}",
-            16,
+            15,
             detail_rect.centerx,
-            detail_rect.y + 86,
+            info_y,
             WARNING_COLOR,
         )
 
@@ -3245,52 +3313,47 @@ class Game:
             ("Best x", f"{record['best_multiplier']}x"),
             ("Best time", format_seconds(record["best_time_seconds"])),
         ]
-        chip_y = detail_rect.y + 108
+        chip_y = info_y + 22
         chip_width = 98
         chip_gap = 10
         chip_x = detail_rect.x + 18
         for label, value in stat_specs:
-            chip = pygame.Rect(chip_x, chip_y, chip_width, 44)
+            chip = pygame.Rect(chip_x, chip_y, chip_width, 40)
             pygame.draw.rect(self.screen, (13, 20, 31), chip, border_radius=12)
             pygame.draw.rect(self.screen, PANEL_BORDER, chip, width=1, border_radius=12)
-            self.draw_text(self.screen, label, 13, chip.centerx, chip.y + 8, (176, 188, 206), bold=True)
-            self.draw_text(self.screen, value, 17, chip.centerx, chip.y + 24, WHITE, bold=True)
+            self.draw_text(self.screen, label, 13, chip.centerx, chip.y + 4, (176, 188, 206), bold=True)
+            self.draw_text(self.screen, value, 16, chip.centerx, chip.y + 20, WHITE, bold=True)
             chip_x += chip_width + chip_gap
 
+        text_limit = detail_rect.bottom - (64 if not unlocked else 18)
         description_bottom = self.draw_wrapped_text(
             self.screen,
             mode["description"],
             15,
-            pygame.Rect(detail_rect.x + 18, detail_rect.y + 164, detail_rect.width - 36, 56),
+            pygame.Rect(detail_rect.x + 18, chip_y + 48, detail_rect.width - 36, 52),
             (192, 205, 224),
+            max_bottom=text_limit,
         )
 
-        rules_y = description_bottom + 8
+        rules_y = description_bottom + 6
         for line in mode["rules"][:2]:
+            if rules_y + 16 > text_limit:
+                break
             rules_y = self.draw_wrapped_text(
                 self.screen,
                 f"- {line}",
                 14,
                 pygame.Rect(detail_rect.x + 18, rules_y, detail_rect.width - 36, 36),
                 WHITE,
-            ) + 4
-        if len(mode["rules"]) > 2:
+                max_bottom=text_limit,
+            ) + 2
+        if len(mode["rules"]) > 2 and rules_y + 16 <= text_limit:
             self.draw_text(self.screen, "See briefing for the full rule breakdown.", 13, detail_rect.x + 18, rules_y, (176, 188, 206), align="topleft")
-            rules_y += 18
-
-        boss_interval = mode["boss_interval"]
-        boss_line = "Boss cadence: every wave" if boss_interval == 1 else f"Boss cadence: every {boss_interval} waves"
-        time_limit = mode["time_limit_seconds"]
-        metadata_line = f"{boss_line}   |   Surges from wave 10"
-        if time_limit:
-            metadata_line += f"   |   Clock {format_seconds(time_limit)}"
-        self.draw_text(self.screen, metadata_line, 13, detail_rect.x + 18, rules_y, (176, 188, 206), align="topleft")
-        rules_y += 18
 
         if not unlocked:
-            self.draw_text(self.screen, self.unlock_requirement_text(mode_id), 15, detail_rect.centerx, detail_rect.bottom - 44, WARNING_COLOR, bold=True)
-            self.draw_text(self.screen, self.unlock_progress_text(mode_id), 15, detail_rect.centerx, detail_rect.bottom - 22, (176, 188, 206))
-        self.draw_text(self.screen, "Arrows change mode. Enter/Space deploy. R opens records. H opens help. Esc goes back.", 16, SCREEN_WIDTH / 2, 520, (176, 188, 206))
+            self.draw_text(self.screen, self.unlock_requirement_text(mode_id), 14, detail_rect.centerx, detail_rect.bottom - 40, WARNING_COLOR, bold=True)
+            self.draw_text(self.screen, self.unlock_progress_text(mode_id), 14, detail_rect.centerx, detail_rect.bottom - 20, (176, 188, 206))
+        self.draw_text(self.screen, "Arrows change mode. Enter/Space deploy. R opens records. H opens help. Esc goes back.", 16, SCREEN_WIDTH / 2, 522, (176, 188, 206))
 
     def draw_briefing_screen(self):
         mode = self.current_mode()
@@ -3299,68 +3362,67 @@ class Game:
         else:
             boss_line = f"Boss waves arrive every {mode['boss_interval']} pushes."
         self.draw_background(self.screen)
-        panel = pygame.Rect(98, 78, SCREEN_WIDTH - 196, SCREEN_HEIGHT - 156)
+        panel = pygame.Rect(70, 28, SCREEN_WIDTH - 140, SCREEN_HEIGHT - 64)
         self.draw_panel(self.screen, panel)
-        self.draw_text(self.screen, f"Quick Briefing  |  {mode['label']}", 38, SCREEN_WIDTH / 2, 118, TITLE_COLOR, bold=True)
+        self.draw_text(self.screen, f"Quick Briefing  |  {mode['label']}", 34, SCREEN_WIDTH / 2, 58, TITLE_COLOR, bold=True)
         briefing = [
-            mode["briefing_lines"][0],
-            mode["briefing_lines"][1],
-            "Shoot mushrooms to clear routes, but watch for poisoned caps:",
-            "a diving centipede head will cut straight through your lane.",
-            "",
-            "Build score by chaining kills before the combo timer expires.",
-            f"Every {mode['extra_life_step']:,} points earns another defence ship.",
-            boss_line,
-            "Late-wave overrun surges start from Wave 10 and pay out extra points if cleared.",
+            (WIN_LINE, SUCCESS_COLOR),
+            (LOSS_LINE, DANGER_COLOR),
+            (mode["briefing_lines"][0], WHITE),
+            (mode["briefing_lines"][1], WHITE),
+            ("Poisoned mushrooms make centipede heads dive through your lane.", WHITE),
+            (f"Every {mode['extra_life_step']:,} points earns another defence ship.", WHITE),
+            (boss_line, WHITE),
+            ("The run ends when Matriarch Prime falls or the trench is lost.", WHITE),
         ]
-        y = 178
-        for line in briefing:
-            if line:
-                self.draw_text(self.screen, line, 20, SCREEN_WIDTH / 2, y, WHITE)
-            y += 28
+        y = 108
+        for line, color in briefing:
+            self.draw_text(self.screen, line, 17, SCREEN_WIDTH / 2, y, color, bold=color != WHITE)
+            y += 22
 
         controls = [
-            "Left / Right    Strafe",
-            "Up / Down       Advance or fall back",
-            "Hold Space      Fire",
-            "P               Pause menu",
-            "M               Toggle audio",
-            "Esc             Abandon current run",
+            ("Left / Right", "Strafe", WHITE),
+            ("Up / Down", "Advance or fall back", WARNING_COLOR),
+            ("Hold Space", "Fire", WHITE),
+            ("P", "Pause menu", WHITE),
+            ("M", "Toggle audio", WHITE),
+            ("Esc", "Abandon current run", WHITE),
         ]
-        for index, line in enumerate(controls):
-            color = WARNING_COLOR if index == 1 else WHITE
-            self.draw_text(self.screen, line, 19, SCREEN_WIDTH / 2, 402 + index * 26, color)
-        self.draw_text(self.screen, "Press Enter to deploy the first defence line.", 20, SCREEN_WIDTH / 2, 530, SUCCESS_COLOR, bold=True)
-        self.draw_text(self.screen, "Press H for the help card or Esc to return to the title screen.", 16, SCREEN_WIDTH / 2, 560, (172, 186, 205))
+        control_y = y + 10
+        for action, effect, color in controls:
+            self.draw_text(self.screen, action, 16, 300, control_y, color, align="topright")
+            self.draw_text(self.screen, effect, 16, 324, control_y, color, align="topleft")
+            control_y += 22
+        self.draw_text(self.screen, "Press Enter to deploy the first defence line.", 18, SCREEN_WIDTH / 2, control_y + 8, SUCCESS_COLOR, bold=True)
+        self.draw_text(self.screen, "Press H for the help card or Esc to return to the title screen.", 16, SCREEN_WIDTH / 2, control_y + 34, (172, 186, 205))
 
     def draw_help_screen(self):
         self.draw_background(self.screen)
-        panel = pygame.Rect(78, 64, SCREEN_WIDTH - 156, SCREEN_HEIGHT - 128)
+        panel = pygame.Rect(70, 36, SCREEN_WIDTH - 140, SCREEN_HEIGHT - 80)
         self.draw_panel(self.screen, panel)
-        self.draw_text(self.screen, "How To Play", 44, SCREEN_WIDTH / 2, 106, TITLE_COLOR, bold=True)
+        self.draw_text(self.screen, "How To Play", 40, SCREEN_WIDTH / 2, 64, TITLE_COLOR, bold=True)
         lines = [
-            ("Core loop", WARNING_COLOR),
-            ("1. Clear the segmented swarm before it reaches the player zone.", WHITE),
-            ("2. Use mushrooms as partial cover, but remove dangerous poison lanes.", WHITE),
-            ("3. Chain kills quickly to raise the multiplier and score harder.", WHITE),
-            ("4. Survive long enough to meet the Hive Matriarch on boss waves.", WHITE),
+            ("The run", WARNING_COLOR),
+            (WIN_LINE, SUCCESS_COLOR),
+            (LOSS_LINE, DANGER_COLOR),
+            ("Classic Defence reaches her on wave 12.", WHITE),
             ("", WHITE),
-            ("Phase two systems", WARNING_COLOR),
-            ("- Start Run opens challenge modes with different rules and unlock states.", WHITE),
-            ("- Run Records tracks local top runs for every mode.", WHITE),
+            ("How", WARNING_COLOR),
+            ("Clear the swarm before it reaches the player zone.", WHITE),
+            ("Poisoned mushrooms make centipede heads dive.", WHITE),
+            ("Chain kills raise the multiplier.", WHITE),
+            ("Bosses follow the mode cadence.", WHITE),
             ("", WHITE),
-            ("Enemy notes", WARNING_COLOR),
-            ("- Centipede heads score big and split the body behind them.", WHITE),
-            ("- Fleas seed new mushrooms when the lower lane gets too clear.", WHITE),
-            ("- Scorpions poison mushrooms and force dive attacks.", WHITE),
-            ("- Spiders prowl the player zone and punish drift.", WHITE),
+            ("Enemies", WARNING_COLOR),
+            ("Centipede heads split the body. Fleas replant mushrooms.", WHITE),
+            ("Scorpions poison caps. Spiders hunt the player zone.", WHITE),
         ]
-        y = 160
+        y = 118
         for line, color in lines:
             if line:
-                self.draw_text(self.screen, line, 20, SCREEN_WIDTH / 2, y, color, bold=color == WARNING_COLOR)
-            y += 28
-        self.draw_text(self.screen, "Press Enter or Esc to go back.", 18, SCREEN_WIDTH / 2, 536, SUCCESS_COLOR, bold=True)
+                self.draw_text(self.screen, line, 18, SCREEN_WIDTH / 2, y, color, bold=color == WARNING_COLOR)
+            y += 24
+        self.draw_text(self.screen, "Press Enter or Esc to go back.", 18, SCREEN_WIDTH / 2, 520, SUCCESS_COLOR, bold=True)
 
     def draw_options_screen(self):
         self.draw_background(self.screen)
@@ -3504,22 +3566,34 @@ class Game:
         self.draw_menu(self.screen, ["Resume", "How To Play", "Options", "Abandon Run"], self.pause_menu_index, 248)
         self.draw_text(self.screen, "Press P to resume instantly.", 18, SCREEN_WIDTH / 2, 454, SUCCESS_COLOR)
 
-    def draw_game_over_screen(self):
-        self.draw_background(self.screen)
-        panel = pygame.Rect(86, 60, SCREEN_WIDTH - 172, SCREEN_HEIGHT - 120)
-        self.draw_panel(self.screen, panel)
-        heading = "Defence Line Lost"
+    def ending_copy(self):
+        if self.game_phase == "victory" or self.run_end_reason == "victory":
+            return "Sector Seven Holds", "Matriarch Prime is broken.", SUCCESS_COLOR
         if self.run_end_reason == "timeout":
-            heading = "Strike Clock Expired"
-        elif self.run_end_reason == "abandoned":
-            heading = "Run Aborted"
-        self.draw_text(self.screen, heading, 46, SCREEN_WIDTH / 2, 102, DANGER_COLOR, bold=True)
-        self.draw_text(self.screen, self.current_mode()["label"], 20, SCREEN_WIDTH / 2, 140, TITLE_COLOR, bold=True)
-        self.draw_text(self.screen, f"Final Score  {self.score}", 28, SCREEN_WIDTH / 2, 166, WHITE, bold=True)
-        self.draw_text(self.screen, f"High Score  {self.high_score}", 22, SCREEN_WIDTH / 2, 204, WARNING_COLOR)
-        self.draw_text(self.screen, f"Trench Rating  {self.rank_label}", 22, SCREEN_WIDTH / 2, 234, TITLE_COLOR, bold=True)
+            return "Strike Clock Expired", "The strike clock hit zero before Matriarch Prime fell.", DANGER_COLOR
+        if self.run_end_reason == "abandoned":
+            return "Run Aborted", "The run was abandoned before Matriarch Prime fell.", DANGER_COLOR
+        return "Defence Line Lost", "Every defence ship is gone.", DANGER_COLOR
 
-        stats_y = 276
+    def draw_ending_screen(self):
+        heading, subtitle, heading_color = self.ending_copy()
+        self.draw_background(self.screen)
+        panel = pygame.Rect(86, 36, SCREEN_WIDTH - 172, SCREEN_HEIGHT - 72)
+        self.draw_panel(self.screen, panel)
+        self.draw_text(self.screen, heading, 42, SCREEN_WIDTH / 2, 64, heading_color, bold=True)
+        self.draw_text(self.screen, subtitle, 18, SCREEN_WIDTH / 2, 112, WHITE)
+        self.draw_text(self.screen, self.current_mode()["label"], 20, SCREEN_WIDTH / 2, 140, TITLE_COLOR, bold=True)
+        self.draw_text(self.screen, f"Final Score  {self.score}", 28, SCREEN_WIDTH / 2, 168, WHITE, bold=True)
+        self.draw_text(
+            self.screen,
+            f"High Score  {self.high_score}    Rating  {self.rank_label}",
+            20,
+            SCREEN_WIDTH / 2,
+            206,
+            WARNING_COLOR,
+        )
+
+        stats_y = 232
         summary = [
             f"Time in lane        {format_seconds(self.play_frames / 60)}",
             f"Waves cleared       {self.stats['waves_cleared']}",
@@ -3530,16 +3604,21 @@ class Game:
             f"Best multiplier     {self.best_multiplier}x",
         ]
         for line in summary:
-            self.draw_text(self.screen, line, 21, SCREEN_WIDTH / 2, stats_y, WHITE)
-            stats_y += 26
+            self.draw_text(self.screen, line, 18, SCREEN_WIDTH / 2, stats_y, WHITE)
+            stats_y += 20
 
-        notes = self.run_record_highlights[:2] + self.run_unlocks[:2]
-        note_y = 468
-        for note in notes[:2]:
+        notes = self.run_record_highlights[:1] + self.run_unlocks[:2]
+        for note in notes[:3]:
             note_color = SUCCESS_COLOR if "unlocked" in note.lower() else WARNING_COLOR
-            self.draw_text(self.screen, note, 17, SCREEN_WIDTH / 2, note_y, note_color, bold=True)
-            note_y += 24
-        self.draw_menu(self.screen, ["Retry", "Run Records", "Title Screen", "Quit"], self.game_over_menu_index, 506)
+            self.draw_text(self.screen, note, 16, SCREEN_WIDTH / 2, stats_y + 4, note_color, bold=True)
+            stats_y += 18
+        self.draw_menu(self.screen, ["Retry", "Run Records", "Title Screen", "Quit"], self.game_over_menu_index, max(456, stats_y + 8))
+
+    def draw_game_over_screen(self):
+        self.draw_ending_screen()
+
+    def draw_victory_screen(self):
+        self.draw_ending_screen()
 
     def render(self):
         if self.game_phase == "title":
@@ -3560,6 +3639,8 @@ class Game:
             self.draw_paused_screen()
         elif self.game_phase == "game_over":
             self.draw_game_over_screen()
+        elif self.game_phase == "victory":
+            self.draw_victory_screen()
         else:
             self.draw_gameplay()
         pygame.display.flip()
