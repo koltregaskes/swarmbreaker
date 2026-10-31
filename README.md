@@ -61,6 +61,12 @@ python tools/play_campaign_endings.py
 
 The win is Matriarch Prime on wave 12. The loss is every defence ship destroyed. The script drives the same key and fire inputs a player uses. It does not skip to an ending.
 
+Killing Matriarch Prime wins the run at once, even with support centipedes or enemy bolts still in the trench, on the last second of the strike clock, or on the last ship. These edge cases are locked in by:
+
+```bash
+python -m unittest tools.test_prime_victory -v
+```
+
 ## Smoke test
 
 ```bash

@@ -3072,7 +3072,13 @@ class Game:
         if self.game_phase != "playing" or not self.wave_profile:
             return
         if self.wave_profile["kind"] == "boss":
-            if not self.bosses and not self.centipedes and not self.enemy_projectiles:
+            if self.wave_profile.get("prime"):
+                # Matriarch Prime is the campaign's winning boss: her fall ends the run at once,
+                # even with support centipedes or enemy projectiles still in the trench, so a
+                # leftover shot or the strike clock can no longer turn a won run into a loss.
+                if not self.bosses:
+                    self.complete_wave()
+            elif not self.bosses and not self.centipedes and not self.enemy_projectiles:
                 self.complete_wave()
         elif not self.centipedes:
             self.complete_wave()
