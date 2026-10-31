@@ -1,0 +1,39 @@
+# Checks only. This workflow never deploys or publishes anything.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches-ignore: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Install, compile, headless smoke, desktop validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      # SDL dummy drivers: no window and no audio device on the runner.
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: python -m pip install pygame-ce==2.5.8
+      - name: Byte-compile every module
+        run: python -m compileall -q main.py tools
+      - name: Headless smoke test (300 frames, fails on any exception)
+        env:
+          SWARMBREAKER_HEADLESS_SMOKE_TEST: "1"
+        run: python main.py
+      - name: Desktop validation (sound bank, late waves, Matriarch Prime, review pack)
+        run: python tools/validate_desktop_demo.py
