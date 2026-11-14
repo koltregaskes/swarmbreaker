@@ -51,6 +51,9 @@ python main.py
 - `R`: open records from the mode select screen
 - `Esc`: back out of menus or end the current run
 
+Switching to another window releases movement and fire, and pauses an active run.
+Press `P` or choose Resume when you return.
+
 ## Campaign endings
 
 A fresh profile can be played from the title screen through a Classic Defence loss and a Classic Defence win:

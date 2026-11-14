@@ -2592,6 +2592,15 @@ class Game:
         elif key == pygame.K_SPACE:
             self.fire_held = False
 
+    def handle_focus_lost(self):
+        self.move_left = self.move_right = False
+        self.move_up = self.move_down = False
+        self.fire_held = False
+        if self.game_phase == "playing":
+            self.pause_menu_index = 0
+            self.game_phase = "paused"
+            self.set_status_message("Run paused. Press P to resume.", 90)
+
     def handle_title_input(self, key):
         items = self.title_menu_items()
         if key == pygame.K_UP:
@@ -3663,6 +3672,8 @@ class Game:
                     self.handle_keydown(event.key)
                 elif event.type == pygame.KEYUP:
                     self.handle_keyup(event.key)
+                elif event.type == pygame.WINDOWFOCUSLOST:
+                    self.handle_focus_lost()
 
             self.update()
             self.sync_music()
