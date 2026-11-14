@@ -147,3 +147,13 @@ python tools/generate_browser_review_pack.py
 
 High score, settings, unlocks, and local run records are now written to your local user data folder instead of the repo root.
 Legacy repo-root high score and settings files are still read if they already exist.
+
+## Prime victory regression tests
+
+With the existing pygame dependency installed, run:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+The four cases run across all four modes using real bullet collisions and SDL dummy drivers. They check support still alive, hostile shots, the last live clock frame, and the last ship, including final-wave rewards and a single saved victory. No window or audio device opens. Test profiles stay in ignored `.test-runtime/`, separate from player saves.
