@@ -51,8 +51,8 @@ python main.py
 - `R`: open records from the mode select screen
 - `Esc`: back out of menus or end the current run
 
-Switching to another window releases movement and fire, and pauses an active run.
-Press `P` or choose Resume when you return.
+Switching to another window releases movement and fire, and pauses gameplay or a wave introduction.
+Press `P` or choose Resume when you return; introductions continue their saved countdown.
 
 ## Campaign endings
 

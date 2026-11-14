@@ -26,13 +26,41 @@ class FocusRecovery(unittest.TestCase):
 
     def test_focus_loss_preserves_menus_and_endings(self):
         game = prime_wave_game("classic")
-        for phase in ("title", "briefing", "wave_intro", "paused", "game_over", "victory"):
+        for phase in ("title", "briefing", "paused", "game_over", "victory"):
             with self.subTest(phase=phase):
                 game.game_phase = phase
                 game.fire_held = True
                 game.handle_focus_lost()
                 self.assertEqual(game.game_phase, phase)
                 self.assertFalse(game.fire_held)
+
+    def test_focus_loss_suspends_intro_until_explicit_resume(self):
+        for level, resume_key in ((1, main.pygame.K_p), (2, main.pygame.K_RETURN)):
+            with self.subTest(level=level):
+                game = main.Game()
+                game.sound_enabled = False
+                game.start_run("time_attack", skip_briefing=True)
+                if level == 2:
+                    game.begin_wave(level)
+                self.assertEqual(game.game_phase, "wave_intro")
+                intro_timer, clock, lives = game.wave_intro_timer, game.mode_timer_frames, game.lives
+                game.handle_focus_lost()
+                game.handle_focus_lost()  # repeated notifications must preserve the return phase
+                for _ in range(intro_timer + 120):
+                    game.update()
+                self.assertEqual(game.game_phase, "paused")
+                self.assertEqual(game.wave_intro_timer, intro_timer)
+                self.assertEqual(game.mode_timer_frames, clock)
+                self.assertEqual(game.lives, lives)
+                game.handle_keydown(resume_key)
+                self.assertEqual(game.game_phase, "wave_intro")
+                for _ in range(intro_timer + 1):
+                    game.update()
+                self.assertEqual(game.game_phase, "playing")
+                # A later ordinary pause must return to gameplay, not the introduction.
+                game.handle_keydown(main.pygame.K_p)
+                game.handle_keydown(main.pygame.K_p)
+                self.assertEqual(game.game_phase, "playing")
 
 
 if __name__ == "__main__":
